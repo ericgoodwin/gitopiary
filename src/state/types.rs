@@ -2,29 +2,6 @@ use std::path::PathBuf;
 use crate::config::RepoConfig;
 
 #[derive(Debug, Clone)]
-pub struct TextSelection {
-    /// Start position in terminal content coordinates (row, col).
-    pub start: (u16, u16),
-    /// Current end position (row, col).
-    pub end: (u16, u16),
-    /// Whether the user is still dragging.
-    pub dragging: bool,
-}
-
-impl TextSelection {
-    /// Returns (start, end) in normalized order (top-left to bottom-right).
-    pub fn ordered(&self) -> ((u16, u16), (u16, u16)) {
-        let (sr, sc) = self.start;
-        let (er, ec) = self.end;
-        if sr < er || (sr == er && sc <= ec) {
-            ((sr, sc), (er, ec))
-        } else {
-            ((er, ec), (sr, sc))
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct AppState {
     pub repos: Vec<Repository>,
     pub selected_repo_idx: usize,
@@ -34,7 +11,6 @@ pub struct AppState {
     pub add_repo_dialog: Option<AddRepoDialog>,
     pub is_refreshing: bool,
     pub should_quit: bool,
-    pub terminal_selection: Option<TextSelection>,
     pub delete_worktree_dialog: Option<DeleteWorktreeDialog>,
 }
 
@@ -49,7 +25,6 @@ impl AppState {
             add_repo_dialog: None,
             is_refreshing: false,
             should_quit: false,
-            terminal_selection: None,
             delete_worktree_dialog: None,
         }
     }

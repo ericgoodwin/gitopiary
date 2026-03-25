@@ -10,9 +10,7 @@ path = "src/main.rs"
 [dependencies]
 ratatui = "0.30"
 crossterm = { version = "0.29", features = ["event-stream"] }
-tui-term = "0.3"
-portable-pty = "0.8"
-vt100 = "0.15"
+alacritty_terminal = "0.25"
 git2 = "0.19"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }

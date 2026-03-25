@@ -45,7 +45,6 @@ pub fn draw(frame: &mut Frame, app: &App) -> (u16, u16) {
         right,
         active_session,
         app.state.focus == PanelFocus::Terminal,
-        app.state.terminal_selection.as_ref(),
     );
 
     render_status_bar(frame, status_area, app);
