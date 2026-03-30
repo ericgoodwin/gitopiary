@@ -75,7 +75,7 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     }
 
     parts.push(Span::styled(
-        " j/k: navigate  Enter: terminal  Ctrl+\\: unfocus  e: zed  n: new  d: delete  A: add repo  r: refresh  q: quit",
+        " j/k: navigate  Enter/Space: terminal  Ctrl+Space: unfocus  e: zed  n: new  d: delete  A: add repo  r: refresh  q: quit",
         Style::default().fg(Color::DarkGray),
     ));
 

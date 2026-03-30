@@ -461,7 +461,7 @@ fn handle_list_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>)
         (KeyCode::Tab, _) => {
             app.state.move_selection_down();
         }
-        (KeyCode::Enter, _) => {
+        (KeyCode::Enter, _) | (KeyCode::Char(' '), _) => {
             if let Some(path) = app.state.selected_worktree_path().cloned() {
                 let (rows, cols) = exact_or_approx_pty_size(app);
                 if let Err(e) = app.pty_manager.get_or_create(&path, rows, cols, tx.clone()) {
@@ -510,10 +510,6 @@ fn handle_list_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>)
                 }
             }
         }
-        (KeyCode::Char(' '), _) => {
-            // No-op: collapsing repos is disabled because navigation only
-            // lands on worktree items, making it impossible to re-expand.
-        }
         _ => {}
     }
 }
@@ -523,11 +519,8 @@ fn handle_terminal_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEve
 
     tracing::debug!("terminal key: code={:?} modifiers={:?}", key.code, key.modifiers);
 
-    let is_unfocus = match key.code {
-        KeyCode::Char('\\') if key.modifiers.contains(KeyModifiers::CONTROL) => true,
-        KeyCode::Char('\x1c') => true,
-        _ => false,
-    };
+    let is_unfocus = key.code == KeyCode::Char(' ')
+        && key.modifiers.contains(KeyModifiers::CONTROL);
     if is_unfocus {
         app.state.focus = PanelFocus::WorktreeList;
         return;
