@@ -32,7 +32,7 @@ impl Default for Config {
             refresh_interval_secs: default_refresh_interval(),
             shell: default_shell(),
             repos: vec![],
-            keybindings: std::collections::HashMap::new(),
+            keybindings: HashMap::new(),
         }
     }
 }
