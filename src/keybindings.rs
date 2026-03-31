@@ -104,8 +104,9 @@ fn format_key(code: KeyCode, mods: KeyModifiers) -> String {
 }
 
 /// Parse a key string like "ctrl+space", "j", "shift+a", "f12" into
-/// a (KeyCode, KeyModifiers) pair. Case-insensitive.
-pub fn parse_key(input: &str) -> Result<(KeyCode, KeyModifiers)> {
+/// a (KeyCode, KeyModifiers) pair. Case-insensitive for key names and
+/// modifiers, but preserves case for single-character keys.
+fn parse_key(input: &str) -> Result<(KeyCode, KeyModifiers)> {
     let input = input.trim();
     if input.is_empty() {
         return Err(anyhow!("empty key string"));
@@ -127,7 +128,10 @@ pub fn parse_key(input: &str) -> Result<(KeyCode, KeyModifiers)> {
         }
         raw_key_part = parts[1];
     } else {
-        return Err(anyhow!("invalid key string: '{}'", input));
+        return Err(anyhow!(
+            "invalid key string '{}': only one modifier is supported (e.g., 'ctrl+a', not 'ctrl+shift+a')",
+            input
+        ));
     }
 
     // Lowercase for matching special key names, but preserve original case
@@ -169,7 +173,7 @@ pub fn parse_key(input: &str) -> Result<(KeyCode, KeyModifiers)> {
 }
 
 /// Parse an action string like "move_down" into an Action enum variant.
-pub fn parse_action(input: &str) -> Result<Action> {
+fn parse_action(input: &str) -> Result<Action> {
     match input.trim() {
         "move_down" => Ok(Action::MoveDown),
         "move_up" => Ok(Action::MoveUp),
@@ -204,6 +208,8 @@ impl Default for Keybindings {
         map.insert((KeyCode::Char('c'), KeyModifiers::CONTROL), Action::Quit);
         // Actions
         map.insert((KeyCode::Char('n'), KeyModifiers::NONE), Action::NewWorktree);
+        // Terminals report Shift+A inconsistently: some send Shift+'a',
+        // others send 'A' with no modifier. Register both to be safe.
         map.insert((KeyCode::Char('a'), KeyModifiers::SHIFT), Action::AddRepo);
         map.insert((KeyCode::Char('A'), KeyModifiers::NONE), Action::AddRepo);
         map.insert((KeyCode::Char('e'), KeyModifiers::NONE), Action::OpenEditor);
