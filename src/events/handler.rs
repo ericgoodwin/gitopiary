@@ -6,6 +6,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
 use tokio::sync::mpsc::UnboundedSender;
 use crate::app::App;
 use crate::events::AppEvent;
+use crate::keybindings::Action;
 use crate::state::types::{AddRepoDialog, DeleteWorktreeDialog, PanelFocus, NewWorktreeDialog};
 
 pub fn handle_event(app: &mut App, event: Event, tx: &UnboundedSender<AppEvent>) {
@@ -448,8 +449,6 @@ fn handle_dialog_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent
 }
 
 fn handle_list_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>) {
-    use crate::keybindings::Action;
-
     let action = match app.state.keybindings.get(key.code, key.modifiers) {
         Some(a) => *a,
         None => return,
@@ -524,8 +523,6 @@ fn handle_terminal_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEve
     clear_selection(app);
 
     tracing::debug!("terminal key: code={:?} modifiers={:?}", key.code, key.modifiers);
-
-    use crate::keybindings::Action;
 
     if app.state.keybindings.get(key.code, key.modifiers) == Some(&Action::UnfocusTerminal) {
         app.state.focus = PanelFocus::WorktreeList;
