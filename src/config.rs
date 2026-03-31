@@ -12,6 +12,9 @@ pub struct Config {
 
     #[serde(default)]
     pub repos: Vec<RepoConfig>,
+
+    #[serde(default)]
+    pub keybindings: std::collections::HashMap<String, String>,
 }
 
 fn default_refresh_interval() -> u64 {
@@ -28,6 +31,7 @@ impl Default for Config {
             refresh_interval_secs: default_refresh_interval(),
             shell: default_shell(),
             repos: vec![],
+            keybindings: std::collections::HashMap::new(),
         }
     }
 }

@@ -65,19 +65,53 @@ pub fn draw(frame: &mut Frame, app: &App) -> (u16, u16) {
 }
 
 fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::keybindings::Action;
+
     let mut parts = vec![];
 
     if app.state.is_refreshing {
         parts.push(Span::styled(
-            " ⟳ refreshing ",
+            " \u{27f3} refreshing ",
             Style::default().fg(Color::Yellow),
         ));
     }
 
-    parts.push(Span::styled(
-        " j/k: navigate  Enter/Space: terminal  Ctrl+Space: unfocus  e: zed  n: new  d: delete  A: add repo  r: refresh  q: quit",
-        Style::default().fg(Color::DarkGray),
-    ));
+    let kb = &app.state.keybindings;
+    let mut hints = Vec::new();
+
+    // Navigation: show up to 2 keys joined with "/"
+    {
+        let down_keys: Vec<String> = [Action::MoveDown].iter().flat_map(|a| {
+            kb.hint_for(*a).into_iter()
+        }).collect();
+        let up_keys: Vec<String> = [Action::MoveUp].iter().flat_map(|a| {
+            kb.hint_for(*a).into_iter()
+        }).collect();
+        if !down_keys.is_empty() || !up_keys.is_empty() {
+            let nav = format!("{}/{}", down_keys.first().unwrap_or(&String::new()), up_keys.first().unwrap_or(&String::new()));
+            hints.push(format!("{}: navigate", nav));
+        }
+    }
+
+    let action_labels = [
+        (Action::FocusTerminal, "terminal"),
+        (Action::UnfocusTerminal, "unfocus"),
+        (Action::OpenEditor, "zed"),
+        (Action::NewWorktree, "new"),
+        (Action::DeleteWorktree, "delete"),
+        (Action::AddRepo, "add repo"),
+        (Action::Refresh, "refresh"),
+        (Action::Quit, "quit"),
+    ];
+
+    for (action, label) in &action_labels {
+        if let Some(key) = kb.hint_for(*action) {
+            hints.push(format!("{}: {}", key, label));
+        }
+    }
+
+    let hint_str = format!(" {}", hints.join("  "));
+    parts.push(Span::styled(hint_str, Style::default().fg(Color::DarkGray)));
 
     let status = Paragraph::new(Line::from(parts))
         .block(Block::default().style(Style::default().bg(theme::COLOR_STATUS_BAR)));
