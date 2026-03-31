@@ -67,7 +67,7 @@ In the terminal pane, mouse scroll works for both mouse-aware programs and regul
 
 ### Custom keybindings
 
-Override any default keybinding by adding a `[keybindings]` section to your config file. When you override an action, **all** default bindings for that action are replaced. Actions you don't mention keep their defaults.
+Override any default keybinding by adding a `[keybindings]` section to your config file. When you override an action, **all** default bindings for that action are replaced. Actions you don't mention keep their defaults. `Ctrl+C` always quits unless you explicitly bind it to a different action.
 
 ```toml
 [keybindings]

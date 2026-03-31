@@ -30,7 +30,8 @@ impl Keybindings {
     ///
     /// When a user overrides an action, all default bindings for that action
     /// are removed first, so the user's config fully replaces the defaults
-    /// for any action they touch.
+    /// for any action they touch. `Ctrl+C` is always preserved as Quit
+    /// unless the user explicitly binds it to a different action.
     pub fn from_config(overrides: &HashMap<String, String>) -> Result<Self> {
         // Parse all overrides first — fail fast on any error.
         let mut parsed: Vec<((KeyCode, KeyModifiers), Action)> = Vec::new();
@@ -50,8 +51,17 @@ impl Keybindings {
             parsed.iter().map(|(_, action)| *action).collect();
         kb.map.retain(|_, action| !overridden_actions.contains(action));
 
-        for ((code, mods), action) in parsed {
-            kb.map.insert((code, mods), action);
+        for ((code, mods), action) in &parsed {
+            kb.map.insert((*code, *mods), *action);
+        }
+
+        // Ensure Ctrl+C always quits unless the user explicitly bound it
+        // to a different action. Losing Ctrl+C is surprising and can
+        // effectively soft-lock users who forget their custom quit key.
+        let ctrl_c = (KeyCode::Char('c'), KeyModifiers::CONTROL);
+        let user_bound_ctrl_c = parsed.iter().any(|((code, mods), _)| *code == ctrl_c.0 && *mods == ctrl_c.1);
+        if !user_bound_ctrl_c {
+            kb.map.entry(ctrl_c).or_insert(Action::Quit);
         }
 
         Ok(kb)
@@ -372,9 +382,10 @@ mod tests {
         let kb = Keybindings::from_config(&overrides).unwrap();
         // x should now be quit
         assert_eq!(kb.get(KeyCode::Char('x'), KeyModifiers::NONE), Some(&Action::Quit));
-        // default quit bindings (q, ctrl+c) should be removed since user overrode the action
+        // default 'q' removed since user overrode the Quit action
         assert_eq!(kb.get(KeyCode::Char('q'), KeyModifiers::NONE), None);
-        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), None);
+        // Ctrl+C is protected — always maps to Quit unless explicitly rebound
+        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), Some(&Action::Quit));
     }
 
     #[test]
@@ -537,7 +548,8 @@ mod tests {
 
         // Default quit keys gone
         assert_eq!(kb.get(KeyCode::Char('q'), KeyModifiers::NONE), None);
-        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), None);
+        // Ctrl+C is protected — still Quit
+        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), Some(&Action::Quit));
     }
 
     #[test]
@@ -551,8 +563,8 @@ mod tests {
         assert_eq!(kb.get(KeyCode::Char('r'), KeyModifiers::NONE), Some(&Action::Quit));
         assert_eq!(kb.get(KeyCode::Char('q'), KeyModifiers::NONE), Some(&Action::Refresh));
 
-        // Default ctrl+c for Quit should be gone (Quit was overridden)
-        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), None);
+        // Ctrl+C is protected — still Quit
+        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), Some(&Action::Quit));
     }
 
     #[test]
@@ -742,9 +754,10 @@ x = "quit"
 
         // x -> Quit (user override)
         assert_eq!(kb.get(KeyCode::Char('x'), KeyModifiers::NONE), Some(&Action::Quit));
-        // default q and ctrl+c for Quit should be gone
+        // default 'q' removed
         assert_eq!(kb.get(KeyCode::Char('q'), KeyModifiers::NONE), None);
-        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), None);
+        // Ctrl+C is protected — still Quit
+        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), Some(&Action::Quit));
 
         // Non-overridden actions remain
         assert_eq!(kb.get(KeyCode::Char('j'), KeyModifiers::NONE), Some(&Action::MoveDown));
@@ -838,7 +851,8 @@ refresh_interval_secs = 10
         assert_eq!(kb.get(KeyCode::Char(' '), KeyModifiers::NONE), None);
         assert_eq!(kb.get(KeyCode::Char(' '), KeyModifiers::CONTROL), None);
         assert_eq!(kb.get(KeyCode::Char('q'), KeyModifiers::NONE), None);
-        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), None);
+        // Ctrl+C is protected even when all actions are overridden
+        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), Some(&Action::Quit));
         assert_eq!(kb.get(KeyCode::Char('n'), KeyModifiers::NONE), None);
         assert_eq!(kb.get(KeyCode::Char('a'), KeyModifiers::SHIFT), None);
         assert_eq!(kb.get(KeyCode::Char('A'), KeyModifiers::NONE), None);
@@ -920,5 +934,38 @@ refresh_interval_secs = 10
         assert_eq!(kb.get(KeyCode::Char('j'), KeyModifiers::NONE), Some(&Action::MoveDown));
         // 'x' is Quit
         assert_eq!(kb.get(KeyCode::Char('x'), KeyModifiers::NONE), Some(&Action::Quit));
+    }
+
+    // --- Ctrl+C protection ---
+
+    #[test]
+    fn ctrl_c_is_protected_when_quit_overridden() {
+        let mut overrides = HashMap::new();
+        overrides.insert("x".to_string(), "quit".to_string());
+        let kb = Keybindings::from_config(&overrides).unwrap();
+
+        // User's quit binding works
+        assert_eq!(kb.get(KeyCode::Char('x'), KeyModifiers::NONE), Some(&Action::Quit));
+        // Ctrl+C is automatically preserved as Quit
+        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), Some(&Action::Quit));
+        // Default 'q' is removed (user overrode Quit action)
+        assert_eq!(kb.get(KeyCode::Char('q'), KeyModifiers::NONE), None);
+    }
+
+    #[test]
+    fn ctrl_c_can_be_explicitly_rebound() {
+        let mut overrides = HashMap::new();
+        overrides.insert("ctrl+c".to_string(), "refresh".to_string());
+        let kb = Keybindings::from_config(&overrides).unwrap();
+
+        // User explicitly bound Ctrl+C to Refresh — that takes precedence
+        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), Some(&Action::Refresh));
+    }
+
+    #[test]
+    fn ctrl_c_preserved_when_no_quit_override() {
+        // No overrides at all — Ctrl+C should still be Quit (default)
+        let kb = Keybindings::from_config(&HashMap::new()).unwrap();
+        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), Some(&Action::Quit));
     }
 }
