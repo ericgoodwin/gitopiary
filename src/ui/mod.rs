@@ -13,6 +13,7 @@ use ratatui::{
     Frame,
 };
 use crate::app::App;
+use crate::keybindings::Action;
 use crate::state::types::PanelFocus;
 use crate::ui::add_repo::render_add_repo_dialog;
 use crate::ui::new_worktree::render_new_worktree_dialog;
@@ -66,7 +67,6 @@ pub fn draw(frame: &mut Frame, app: &App) -> (u16, u16) {
 }
 
 fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
-    use crate::keybindings::Action;
 
     let mut parts = vec![];
 

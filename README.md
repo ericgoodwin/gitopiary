@@ -67,7 +67,7 @@ In the terminal pane, mouse scroll works for both mouse-aware programs and regul
 
 ### Custom keybindings
 
-Override any default keybinding by adding a `[keybindings]` section to your config file. Keys are strings like `esc`, `ctrl+space`, `shift+a`, or `f1`. When you override an action, all default bindings for that action are replaced.
+Override any default keybinding by adding a `[keybindings]` section to your config file. When you override an action, **all** default bindings for that action are replaced. Actions you don't mention keep their defaults.
 
 ```toml
 [keybindings]
@@ -76,4 +76,8 @@ ctrl+r = "refresh"
 x = "quit"
 ```
 
-Available actions: `move_down`, `move_up`, `focus_terminal`, `unfocus_terminal`, `quit`, `new_worktree`, `add_repo`, `open_editor`, `refresh`, `delete_worktree`.
+If the config contains an unrecognised key name or action, gitopiary exits with an error at startup.
+
+**Key format:** Key strings are case-insensitive. Letters: `a`--`z`. Special keys: `enter`, `space`, `tab`, `esc`, `up`, `down`, `left`, `right`, `backspace`, `delete`, `home`, `end`, `f1`--`f12`. One modifier may be prepended: `ctrl+`, `shift+`, or `alt+`.
+
+**Available actions:** `move_down`, `move_up`, `focus_terminal`, `unfocus_terminal`, `quit`, `new_worktree`, `add_repo`, `open_editor`, `refresh`, `delete_worktree`.

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use anyhow::{Context, Result};
@@ -14,7 +15,7 @@ pub struct Config {
     pub repos: Vec<RepoConfig>,
 
     #[serde(default)]
-    pub keybindings: std::collections::HashMap<String, String>,
+    pub keybindings: HashMap<String, String>,
 }
 
 fn default_refresh_interval() -> u64 {

@@ -2,16 +2,16 @@ mod app;
 mod cache;
 mod config;
 mod error;
-mod keybindings;
 mod events;
 mod git;
 mod github;
+mod keybindings;
 mod pty;
 mod state;
 mod ui;
 
 use std::panic;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
 use crossterm::execute;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -36,10 +36,7 @@ async fn main() -> Result<()> {
     tracing::info!("Loaded config with {} repos", config.repos.len());
 
     let keybindings = crate::keybindings::Keybindings::from_config(&config.keybindings)
-        .unwrap_or_else(|e| {
-            eprintln!("Error in keybinding config: {}", e);
-            std::process::exit(1);
-        });
+        .context("Invalid keybinding configuration")?;
 
     // Seed initial state from the on-disk cache so worktrees are visible
     // immediately, before the background git refresh completes.
