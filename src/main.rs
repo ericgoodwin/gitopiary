@@ -2,6 +2,7 @@ mod app;
 mod cache;
 mod config;
 mod error;
+mod keybindings;
 mod events;
 mod git;
 mod github;
@@ -34,6 +35,12 @@ async fn main() -> Result<()> {
 
     tracing::info!("Loaded config with {} repos", config.repos.len());
 
+    let keybindings = crate::keybindings::Keybindings::from_config(&config.keybindings)
+        .unwrap_or_else(|e| {
+            eprintln!("Error in keybinding config: {}", e);
+            std::process::exit(1);
+        });
+
     // Seed initial state from the on-disk cache so worktrees are visible
     // immediately, before the background git refresh completes.
     let cache = cache::load();
@@ -48,7 +55,7 @@ async fn main() -> Result<()> {
         cache.repos.len(),
     );
 
-    let state = AppState::new(initial_repos);
+    let state = AppState::new(initial_repos, keybindings);
     let app = App::new(state, config);
 
     app.run().await?;
