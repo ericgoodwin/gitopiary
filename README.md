@@ -49,6 +49,8 @@ You can also add repos from within the app with `A`.
 
 ## Keybindings
 
+Default keybindings:
+
 | Key | Action |
 |---|---|
 | `j` / `k` | Navigate worktrees |
@@ -62,3 +64,16 @@ You can also add repos from within the app with `A`.
 | `q` | Quit |
 
 In the terminal pane, mouse scroll works for both mouse-aware programs and regular shell output. Drag to select text (copies to clipboard on release).
+
+### Custom keybindings
+
+Override any default keybinding by adding a `[keybindings]` section to your config file. Keys are strings like `esc`, `ctrl+space`, `shift+a`, or `f1`. When you override an action, all default bindings for that action are replaced.
+
+```toml
+[keybindings]
+esc = "unfocus_terminal"
+ctrl+r = "refresh"
+x = "quit"
+```
+
+Available actions: `move_down`, `move_up`, `focus_terminal`, `unfocus_terminal`, `quit`, `new_worktree`, `add_repo`, `open_editor`, `refresh`, `delete_worktree`.
