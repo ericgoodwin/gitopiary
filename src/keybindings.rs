@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crossterm::event::{KeyCode, KeyModifiers};
 use anyhow::{anyhow, Result};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Action {
     MoveDown,
     MoveUp,
@@ -28,11 +28,9 @@ impl Keybindings {
 
     /// Build keybindings by merging user overrides on top of defaults.
     ///
-    /// 1. Parse and validate all overrides (fail on any bad key or action name).
-    /// 2. Start from defaults.
-    /// 3. For each override, if the key already existed in defaults with a
-    ///    *different* action, log a warning that the default was displaced.
-    /// 4. Insert the override (replacing whatever was there).
+    /// When a user overrides an action, all default bindings for that action
+    /// are removed first, so the user's config fully replaces the defaults
+    /// for any action they touch.
     pub fn from_config(overrides: &HashMap<String, String>) -> Result<Self> {
         // Parse all overrides first — fail fast on any error.
         let mut parsed: Vec<((KeyCode, KeyModifiers), Action)> = Vec::new();
@@ -46,16 +44,13 @@ impl Keybindings {
 
         let mut kb = Keybindings::default();
 
+        // Collect the set of actions being overridden, then remove all
+        // default bindings for those actions.
+        let overridden_actions: std::collections::HashSet<Action> =
+            parsed.iter().map(|(_, action)| *action).collect();
+        kb.map.retain(|_, action| !overridden_actions.contains(action));
+
         for ((code, mods), action) in parsed {
-            if let Some(existing) = kb.map.get(&(code, mods)) {
-                if *existing != action {
-                    let old_action = existing;
-                    tracing::warn!(
-                        "keybinding override: key that was default-bound to {:?} is now bound to {:?}",
-                        old_action, action,
-                    );
-                }
-            }
             kb.map.insert((code, mods), action);
         }
 
@@ -356,13 +351,14 @@ mod tests {
         let kb = Keybindings::from_config(&overrides).unwrap();
         // x should now be quit
         assert_eq!(kb.get(KeyCode::Char('x'), KeyModifiers::NONE), Some(&Action::Quit));
-        // q should still be quit (default not displaced)
-        assert_eq!(kb.get(KeyCode::Char('q'), KeyModifiers::NONE), Some(&Action::Quit));
+        // default quit bindings (q, ctrl+c) should be removed since user overrode the action
+        assert_eq!(kb.get(KeyCode::Char('q'), KeyModifiers::NONE), None);
+        assert_eq!(kb.get(KeyCode::Char('c'), KeyModifiers::CONTROL), None);
     }
 
     #[test]
     fn from_config_displaces_default() {
-        // Bind 'r' to 'quit' — this should displace the default 'r' -> 'refresh'
+        // Bind 'r' to 'quit' — removes default quit bindings and default 'r' -> 'refresh'
         let mut overrides = HashMap::new();
         overrides.insert("r".to_string(), "quit".to_string());
         let kb = Keybindings::from_config(&overrides).unwrap();
@@ -415,18 +411,22 @@ mod tests {
 
         let kb = Keybindings::from_config(&overrides).unwrap();
 
-        // User override works
+        // User overrides work
         assert_eq!(kb.get(KeyCode::Char('x'), KeyModifiers::NONE), Some(&Action::Quit));
         assert_eq!(kb.get(KeyCode::Char('j'), KeyModifiers::CONTROL), Some(&Action::MoveDown));
 
-        // Defaults still present
-        assert_eq!(kb.get(KeyCode::Char('j'), KeyModifiers::NONE), Some(&Action::MoveDown));
+        // Default bindings for overridden actions are removed
+        assert_eq!(kb.get(KeyCode::Char('q'), KeyModifiers::NONE), None); // quit was overridden
+        assert_eq!(kb.get(KeyCode::Char('j'), KeyModifiers::NONE), None); // move_down was overridden
+        assert_eq!(kb.get(KeyCode::Down, KeyModifiers::NONE), None);
+        assert_eq!(kb.get(KeyCode::Tab, KeyModifiers::NONE), None);
+
+        // Defaults for non-overridden actions still present
         assert_eq!(kb.get(KeyCode::Enter, KeyModifiers::NONE), Some(&Action::FocusTerminal));
 
-        // Hint works for overridden action
+        // Hint for overridden action shows only the user's key
         let quit_hint = kb.hint_for(Action::Quit).unwrap();
-        // Should be one of: q, x, Ctrl+c (all bound to quit)
-        assert!(["q", "x", "Ctrl+c"].contains(&quit_hint.as_str()));
+        assert_eq!(quit_hint, "x");
     }
 
     #[test]

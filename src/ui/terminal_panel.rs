@@ -10,6 +10,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+use crate::keybindings::{Action, Keybindings};
 use crate::pty::session::PtySession;
 use crate::ui::theme;
 
@@ -18,11 +19,14 @@ pub fn render_terminal_panel(
     area: Rect,
     session: Option<&PtySession>,
     focused: bool,
+    keybindings: &Keybindings,
 ) -> Rect {
     let title = if focused {
-        " Terminal [Ctrl+Space: back] "
+        let key = keybindings.hint_for(Action::UnfocusTerminal).unwrap_or("?".into());
+        format!(" Terminal [{}: back] ", key)
     } else {
-        " Terminal [Space: focus] "
+        let key = keybindings.hint_for(Action::FocusTerminal).unwrap_or("?".into());
+        format!(" Terminal [{}: focus] ", key)
     };
 
     let block = Block::default()
