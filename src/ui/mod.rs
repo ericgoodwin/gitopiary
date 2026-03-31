@@ -66,18 +66,7 @@ pub fn draw(frame: &mut Frame, app: &App) -> (u16, u16) {
     (terminal_inner.width, terminal_inner.height)
 }
 
-fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
-
-    let mut parts = vec![];
-
-    if app.state.is_refreshing {
-        parts.push(Span::styled(
-            " \u{27f3} refreshing ",
-            Style::default().fg(Color::Yellow),
-        ));
-    }
-
-    let kb = &app.state.keybindings;
+fn build_status_hints(kb: &crate::keybindings::Keybindings) -> Vec<String> {
     let mut hints = Vec::new();
 
     if let (Some(down), Some(up)) = (kb.hint_for(Action::MoveDown), kb.hint_for(Action::MoveUp)) {
@@ -101,7 +90,20 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         }
     }
 
-    let hint_str = format!(" {}", hints.join("  "));
+    hints
+}
+
+fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
+    let mut parts = vec![];
+
+    if app.state.is_refreshing {
+        parts.push(Span::styled(
+            " \u{27f3} refreshing ",
+            Style::default().fg(Color::Yellow),
+        ));
+    }
+
+    let hint_str = format!(" {}", build_status_hints(&app.state.keybindings).join("  "));
     parts.push(Span::styled(hint_str, Style::default().fg(Color::DarkGray)));
 
     let status = Paragraph::new(Line::from(parts))

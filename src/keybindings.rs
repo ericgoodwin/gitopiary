@@ -33,37 +33,10 @@ impl Keybindings {
     /// for any action they touch. `Ctrl+C` is always preserved as Quit
     /// unless the user explicitly binds it to a different action.
     pub fn from_config(overrides: &HashMap<String, String>) -> Result<Self> {
-        // Parse all overrides first — fail fast on any error.
-        let mut parsed: Vec<((KeyCode, KeyModifiers), Action)> = Vec::new();
-        for (key_str, action_str) in overrides {
-            let (code, mods) = parse_key(key_str)
-                .map_err(|e| anyhow!("invalid keybinding '{}': {}", key_str, e))?;
-            let action = parse_action(action_str)
-                .map_err(|e| anyhow!("invalid action for '{}': {}", key_str, e))?;
-            parsed.push(((code, mods), action));
-        }
-
+        let parsed = parse_overrides(overrides)?;
         let mut kb = Keybindings::default();
-
-        // Collect the set of actions being overridden, then remove all
-        // default bindings for those actions.
-        let overridden_actions: std::collections::HashSet<Action> =
-            parsed.iter().map(|(_, action)| *action).collect();
-        kb.map.retain(|_, action| !overridden_actions.contains(action));
-
-        for ((code, mods), action) in &parsed {
-            kb.map.insert((*code, *mods), *action);
-        }
-
-        // Ensure Ctrl+C always quits unless the user explicitly bound it
-        // to a different action. Losing Ctrl+C is surprising and can
-        // effectively soft-lock users who forget their custom quit key.
-        let ctrl_c = (KeyCode::Char('c'), KeyModifiers::CONTROL);
-        let user_bound_ctrl_c = parsed.iter().any(|((code, mods), _)| *code == ctrl_c.0 && *mods == ctrl_c.1);
-        if !user_bound_ctrl_c {
-            kb.map.entry(ctrl_c).or_insert(Action::Quit);
-        }
-
+        apply_overrides(&mut kb.map, &parsed);
+        ensure_ctrl_c_quit(&mut kb.map, &parsed);
         Ok(kb)
     }
 
@@ -75,6 +48,41 @@ impl Keybindings {
             .filter(|(_, a)| **a == action)
             .map(|((code, mods), _)| format_key(*code, *mods))
             .min_by(|a, b| a.len().cmp(&b.len()).then_with(|| a.cmp(b)))
+    }
+}
+
+type KeyBinding = ((KeyCode, KeyModifiers), Action);
+
+fn parse_overrides(overrides: &HashMap<String, String>) -> Result<Vec<KeyBinding>> {
+    overrides
+        .iter()
+        .map(|(key_str, action_str)| {
+            let (code, mods) = parse_key(key_str)
+                .map_err(|e| anyhow!("invalid keybinding '{}': {}", key_str, e))?;
+            let action = parse_action(action_str)
+                .map_err(|e| anyhow!("invalid action for '{}': {}", key_str, e))?;
+            Ok(((code, mods), action))
+        })
+        .collect()
+}
+
+fn apply_overrides(map: &mut HashMap<(KeyCode, KeyModifiers), Action>, parsed: &[KeyBinding]) {
+    let overridden_actions: std::collections::HashSet<Action> =
+        parsed.iter().map(|(_, action)| *action).collect();
+    map.retain(|_, action| !overridden_actions.contains(action));
+
+    for ((code, mods), action) in parsed {
+        map.insert((*code, *mods), *action);
+    }
+}
+
+/// Ensure Ctrl+C always quits unless the user explicitly bound it
+/// to a different action.
+fn ensure_ctrl_c_quit(map: &mut HashMap<(KeyCode, KeyModifiers), Action>, parsed: &[KeyBinding]) {
+    let ctrl_c = (KeyCode::Char('c'), KeyModifiers::CONTROL);
+    let user_bound_ctrl_c = parsed.iter().any(|((code, mods), _)| *code == ctrl_c.0 && *mods == ctrl_c.1);
+    if !user_bound_ctrl_c {
+        map.entry(ctrl_c).or_insert(Action::Quit);
     }
 }
 
@@ -113,6 +121,69 @@ fn format_key(code: KeyCode, mods: KeyModifiers) -> String {
     parts.join("+")
 }
 
+/// Split a key string into (modifier, key_name). Returns NONE modifier
+/// for bare keys like "j", and the parsed modifier for "ctrl+j".
+fn split_modifier(input: &str) -> Result<(KeyModifiers, &str)> {
+    let parts: Vec<&str> = input.split('+').collect();
+    match parts.len() {
+        1 => Ok((KeyModifiers::NONE, parts[0])),
+        2 => {
+            let modifier = match parts[0].to_lowercase().as_str() {
+                "ctrl" => KeyModifiers::CONTROL,
+                "shift" => KeyModifiers::SHIFT,
+                "alt" => KeyModifiers::ALT,
+                other => return Err(anyhow!("unknown modifier: '{}'", other)),
+            };
+            Ok((modifier, parts[1]))
+        }
+        _ => Err(anyhow!(
+            "invalid key string '{}': only one modifier is supported (e.g., 'ctrl+a', not 'ctrl+shift+a')",
+            input
+        )),
+    }
+}
+
+/// Match a key name string to a KeyCode. Case-insensitive for named keys,
+/// but preserves the original case for single-character keys.
+fn parse_key_name(raw: &str) -> Result<KeyCode> {
+    let lower = raw.to_lowercase();
+    match lower.as_str() {
+        "enter" => Ok(KeyCode::Enter),
+        "space" => Ok(KeyCode::Char(' ')),
+        "tab" => Ok(KeyCode::Tab),
+        "up" => Ok(KeyCode::Up),
+        "down" => Ok(KeyCode::Down),
+        "left" => Ok(KeyCode::Left),
+        "right" => Ok(KeyCode::Right),
+        "esc" => Ok(KeyCode::Esc),
+        "backspace" => Ok(KeyCode::Backspace),
+        "delete" => Ok(KeyCode::Delete),
+        "home" => Ok(KeyCode::Home),
+        "end" => Ok(KeyCode::End),
+        s if s.starts_with('f') && s.len() > 1 => parse_function_key(s, raw),
+        s if s.len() == 1 => parse_single_char(raw),
+        _ => Err(anyhow!("unknown key: '{}'", raw)),
+    }
+}
+
+fn parse_function_key(lower: &str, raw: &str) -> Result<KeyCode> {
+    let num: u8 = lower[1..].parse()
+        .map_err(|_| anyhow!("invalid function key: '{}'", raw))?;
+    if !(1..=12).contains(&num) {
+        return Err(anyhow!("function key out of range: '{}'", raw));
+    }
+    Ok(KeyCode::F(num))
+}
+
+fn parse_single_char(raw: &str) -> Result<KeyCode> {
+    let ch = raw.chars().next().unwrap();
+    if ch.is_ascii_alphanumeric() || ch.is_ascii_punctuation() {
+        Ok(KeyCode::Char(ch))
+    } else {
+        Err(anyhow!("unsupported key: '{}'", raw))
+    }
+}
+
 /// Parse a key string like "ctrl+space", "j", "shift+a", "f12" into
 /// a (KeyCode, KeyModifiers) pair. Case-insensitive for key names and
 /// modifiers, but preserves case for single-character keys.
@@ -121,64 +192,8 @@ fn parse_key(input: &str) -> Result<(KeyCode, KeyModifiers)> {
     if input.is_empty() {
         return Err(anyhow!("empty key string"));
     }
-
-    let parts: Vec<&str> = input.split('+').collect();
-
-    let mut modifiers = KeyModifiers::NONE;
-    let raw_key_part;
-
-    if parts.len() == 1 {
-        raw_key_part = parts[0];
-    } else if parts.len() == 2 {
-        match parts[0].to_lowercase().as_str() {
-            "ctrl" => modifiers |= KeyModifiers::CONTROL,
-            "shift" => modifiers |= KeyModifiers::SHIFT,
-            "alt" => modifiers |= KeyModifiers::ALT,
-            other => return Err(anyhow!("unknown modifier: '{}'", other)),
-        }
-        raw_key_part = parts[1];
-    } else {
-        return Err(anyhow!(
-            "invalid key string '{}': only one modifier is supported (e.g., 'ctrl+a', not 'ctrl+shift+a')",
-            input
-        ));
-    }
-
-    // Lowercase for matching special key names, but preserve original case
-    // for single-character keys (e.g., "A" should stay as KeyCode::Char('A')).
-    let key_lower = raw_key_part.to_lowercase();
-    let code = match key_lower.as_str() {
-        "enter" => KeyCode::Enter,
-        "space" => KeyCode::Char(' '),
-        "tab" => KeyCode::Tab,
-        "up" => KeyCode::Up,
-        "down" => KeyCode::Down,
-        "left" => KeyCode::Left,
-        "right" => KeyCode::Right,
-        "esc" => KeyCode::Esc,
-        "backspace" => KeyCode::Backspace,
-        "delete" => KeyCode::Delete,
-        "home" => KeyCode::Home,
-        "end" => KeyCode::End,
-        s if s.starts_with('f') && s.len() > 1 => {
-            let num: u8 = s[1..].parse()
-                .map_err(|_| anyhow!("invalid function key: '{}'", raw_key_part))?;
-            if !(1..=12).contains(&num) {
-                return Err(anyhow!("function key out of range: '{}'", raw_key_part));
-            }
-            KeyCode::F(num)
-        }
-        s if s.len() == 1 => {
-            let ch = raw_key_part.chars().next().unwrap();
-            if ch.is_ascii_alphanumeric() || ch.is_ascii_punctuation() {
-                KeyCode::Char(ch)
-            } else {
-                return Err(anyhow!("unsupported key: '{}'", raw_key_part));
-            }
-        }
-        _ => return Err(anyhow!("unknown key: '{}'", raw_key_part)),
-    };
-
+    let (modifiers, raw_key_part) = split_modifier(input)?;
+    let code = parse_key_name(raw_key_part)?;
     Ok((code, modifiers))
 }
 
