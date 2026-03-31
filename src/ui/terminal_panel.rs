@@ -20,9 +20,9 @@ pub fn render_terminal_panel(
     focused: bool,
 ) -> Rect {
     let title = if focused {
-        " Terminal [Ctrl+\\: back] "
+        " Terminal [Ctrl+Space: back] "
     } else {
-        " Terminal [Enter: focus] "
+        " Terminal [Space: focus] "
     };
 
     let block = Block::default()

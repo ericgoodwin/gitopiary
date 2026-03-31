@@ -52,13 +52,12 @@ You can also add repos from within the app with `A`.
 | Key | Action |
 |---|---|
 | `j` / `k` | Navigate worktrees |
-| `Enter` | Focus terminal (creates session if needed) |
-| `Ctrl+\` | Unfocus terminal, back to list |
+| `Enter` / `Space` | Focus terminal (creates session if needed) |
+| `Ctrl+Space` | Unfocus terminal, back to list |
 | `e` | Open worktree in Zed |
 | `n` | New worktree |
 | `d` | Delete worktree |
 | `A` | Add repo |
-| `Space` | Toggle repo expand/collapse |
 | `r` | Refresh |
 | `q` | Quit |
 
