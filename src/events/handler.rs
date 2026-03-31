@@ -213,6 +213,7 @@ fn clear_selection_for_path(app: &mut App, path: &std::path::PathBuf) {
 }
 
 fn handle_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>) {
+    tracing::debug!("handle_key: code={:?} modifiers={:?} kind={:?} focus={:?}", key.code, key.modifiers, key.kind, app.state.focus);
     if app.state.delete_worktree_dialog.is_some() {
         handle_delete_dialog_key(app, key, tx);
         return;
@@ -449,6 +450,7 @@ fn handle_dialog_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent
 }
 
 fn handle_list_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>) {
+    tracing::debug!("list key: code={:?} modifiers={:?} kind={:?}", key.code, key.modifiers, key.kind);
     let action = match app.state.keybindings.get(key.code, key.modifiers) {
         Some(a) => *a,
         None => return,

@@ -23,6 +23,7 @@ pub struct Keybindings {
 
 impl Keybindings {
     pub fn get(&self, code: KeyCode, modifiers: KeyModifiers) -> Option<&Action> {
+        let (code, modifiers) = normalize_key(code, modifiers);
         self.map.get(&(code, modifiers))
     }
 
@@ -53,6 +54,25 @@ impl Keybindings {
 
 type KeyBinding = ((KeyCode, KeyModifiers), Action);
 
+/// Normalize Shift+letter keys to a canonical form: lowercase char + SHIFT.
+/// Terminals and crossterm versions report these inconsistently:
+///   - Some send Char('a') + SHIFT
+///   - Some send Char('A') + NONE
+///   - Some send Char('A') + SHIFT
+/// By normalizing to Char('a') + SHIFT everywhere (insert and lookup),
+/// all three forms match the same binding.
+fn normalize_key(code: KeyCode, modifiers: KeyModifiers) -> (KeyCode, KeyModifiers) {
+    if let KeyCode::Char(c) = code {
+        if c.is_ascii_uppercase() {
+            return (
+                KeyCode::Char(c.to_ascii_lowercase()),
+                modifiers | KeyModifiers::SHIFT,
+            );
+        }
+    }
+    (code, modifiers)
+}
+
 fn parse_overrides(overrides: &HashMap<String, String>) -> Result<Vec<KeyBinding>> {
     overrides
         .iter()
@@ -61,6 +81,7 @@ fn parse_overrides(overrides: &HashMap<String, String>) -> Result<Vec<KeyBinding
                 .map_err(|e| anyhow!("invalid keybinding '{}': {}", key_str, e))?;
             let action = parse_action(action_str)
                 .map_err(|e| anyhow!("invalid action for '{}': {}", key_str, e))?;
+            let (code, mods) = normalize_key(code, mods);
             Ok(((code, mods), action))
         })
         .collect()
@@ -72,7 +93,9 @@ fn apply_overrides(map: &mut HashMap<(KeyCode, KeyModifiers), Action>, parsed: &
     map.retain(|_, action| !overridden_actions.contains(action));
 
     for ((code, mods), action) in parsed {
-        map.insert((*code, *mods), *action);
+        // parsed is already normalized, but be defensive
+        let (code, mods) = normalize_key(*code, *mods);
+        map.insert((code, mods), *action);
     }
 }
 
@@ -101,6 +124,9 @@ fn format_key(code: KeyCode, mods: KeyModifiers) -> String {
 
     let key_name = match code {
         KeyCode::Char(' ') => "Space".to_string(),
+        KeyCode::Char(c) if c.is_ascii_lowercase() && mods.contains(KeyModifiers::SHIFT) => {
+            c.to_ascii_uppercase().to_string()
+        }
         KeyCode::Char(c) => c.to_string(),
         KeyCode::Enter => "Enter".to_string(),
         KeyCode::Tab => "Tab".to_string(),
@@ -218,28 +244,33 @@ fn parse_action(input: &str) -> Result<Action> {
 impl Default for Keybindings {
     fn default() -> Self {
         let mut map = HashMap::new();
+
+        // Helper that normalizes before inserting, so all Shift+letter
+        // variants collapse to a single canonical entry.
+        let mut bind = |code: KeyCode, mods: KeyModifiers, action: Action| {
+            let (code, mods) = normalize_key(code, mods);
+            map.insert((code, mods), action);
+        };
+
         // Navigation
-        map.insert((KeyCode::Char('j'), KeyModifiers::NONE), Action::MoveDown);
-        map.insert((KeyCode::Down, KeyModifiers::NONE), Action::MoveDown);
-        map.insert((KeyCode::Tab, KeyModifiers::NONE), Action::MoveDown);
-        map.insert((KeyCode::Char('k'), KeyModifiers::NONE), Action::MoveUp);
-        map.insert((KeyCode::Up, KeyModifiers::NONE), Action::MoveUp);
+        bind(KeyCode::Char('j'), KeyModifiers::NONE, Action::MoveDown);
+        bind(KeyCode::Down, KeyModifiers::NONE, Action::MoveDown);
+        bind(KeyCode::Tab, KeyModifiers::NONE, Action::MoveDown);
+        bind(KeyCode::Char('k'), KeyModifiers::NONE, Action::MoveUp);
+        bind(KeyCode::Up, KeyModifiers::NONE, Action::MoveUp);
         // Terminal focus
-        map.insert((KeyCode::Enter, KeyModifiers::NONE), Action::FocusTerminal);
-        map.insert((KeyCode::Char(' '), KeyModifiers::NONE), Action::FocusTerminal);
-        map.insert((KeyCode::Char(' '), KeyModifiers::CONTROL), Action::UnfocusTerminal);
+        bind(KeyCode::Enter, KeyModifiers::NONE, Action::FocusTerminal);
+        bind(KeyCode::Char(' '), KeyModifiers::NONE, Action::FocusTerminal);
+        bind(KeyCode::Char(' '), KeyModifiers::CONTROL, Action::UnfocusTerminal);
         // Quit
-        map.insert((KeyCode::Char('q'), KeyModifiers::NONE), Action::Quit);
-        map.insert((KeyCode::Char('c'), KeyModifiers::CONTROL), Action::Quit);
+        bind(KeyCode::Char('q'), KeyModifiers::NONE, Action::Quit);
+        bind(KeyCode::Char('c'), KeyModifiers::CONTROL, Action::Quit);
         // Actions
-        map.insert((KeyCode::Char('n'), KeyModifiers::NONE), Action::NewWorktree);
-        // Terminals report Shift+A inconsistently: some send Shift+'a',
-        // others send 'A' with no modifier. Register both to be safe.
-        map.insert((KeyCode::Char('a'), KeyModifiers::SHIFT), Action::AddRepo);
-        map.insert((KeyCode::Char('A'), KeyModifiers::NONE), Action::AddRepo);
-        map.insert((KeyCode::Char('e'), KeyModifiers::NONE), Action::OpenEditor);
-        map.insert((KeyCode::Char('r'), KeyModifiers::NONE), Action::Refresh);
-        map.insert((KeyCode::Char('d'), KeyModifiers::NONE), Action::DeleteWorktree);
+        bind(KeyCode::Char('n'), KeyModifiers::NONE, Action::NewWorktree);
+        bind(KeyCode::Char('a'), KeyModifiers::SHIFT, Action::AddRepo);
+        bind(KeyCode::Char('e'), KeyModifiers::NONE, Action::OpenEditor);
+        bind(KeyCode::Char('r'), KeyModifiers::NONE, Action::Refresh);
+        bind(KeyCode::Char('d'), KeyModifiers::NONE, Action::DeleteWorktree);
 
         Self { map }
     }
@@ -686,7 +717,7 @@ mod tests {
         assert_eq!(format_key(KeyCode::Enter, KeyModifiers::NONE), "Enter");
         assert_eq!(format_key(KeyCode::Char(' '), KeyModifiers::NONE), "Space");
         assert_eq!(format_key(KeyCode::Char(' '), KeyModifiers::CONTROL), "Ctrl+Space");
-        assert_eq!(format_key(KeyCode::Char('a'), KeyModifiers::SHIFT), "Shift+a");
+        assert_eq!(format_key(KeyCode::Char('a'), KeyModifiers::SHIFT), "Shift+A");
         assert_eq!(format_key(KeyCode::Char('x'), KeyModifiers::ALT), "Alt+x");
         assert_eq!(format_key(KeyCode::F(5), KeyModifiers::NONE), "F5");
         assert_eq!(format_key(KeyCode::Tab, KeyModifiers::NONE), "Tab");
