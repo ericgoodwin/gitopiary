@@ -72,7 +72,7 @@ Override any default keybinding by adding a `[keybindings]` section to your conf
 ```toml
 [keybindings]
 esc = "unfocus_terminal"
-ctrl+r = "refresh"
+"ctrl+r" = "refresh"
 x = "quit"
 ```
 

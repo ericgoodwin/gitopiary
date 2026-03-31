@@ -80,18 +80,8 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     let kb = &app.state.keybindings;
     let mut hints = Vec::new();
 
-    // Navigation: show up to 2 keys joined with "/"
-    {
-        let down_keys: Vec<String> = [Action::MoveDown].iter().flat_map(|a| {
-            kb.hint_for(*a).into_iter()
-        }).collect();
-        let up_keys: Vec<String> = [Action::MoveUp].iter().flat_map(|a| {
-            kb.hint_for(*a).into_iter()
-        }).collect();
-        if !down_keys.is_empty() || !up_keys.is_empty() {
-            let nav = format!("{}/{}", down_keys.first().unwrap_or(&String::new()), up_keys.first().unwrap_or(&String::new()));
-            hints.push(format!("{}: navigate", nav));
-        }
+    if let (Some(down), Some(up)) = (kb.hint_for(Action::MoveDown), kb.hint_for(Action::MoveUp)) {
+        hints.push(format!("{}/{}: navigate", down, up));
     }
 
     let action_labels = [
