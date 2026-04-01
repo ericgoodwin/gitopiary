@@ -483,10 +483,12 @@ fn handle_list_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>)
         (KeyCode::Char('e'), _) => {
             if let Some(wt) = app.state.selected_worktree() {
                 let path = wt.path.clone();
-                std::process::Command::new("zed")
-                    .arg(&path)
-                    .spawn()
-                    .ok();
+                if let Ok(editor) = std::env::var("EDITOR") {
+                    std::process::Command::new(&editor)
+                        .arg(&path)
+                        .spawn()
+                        .ok();
+                }
             }
         }
         (KeyCode::Char('r'), _) => {

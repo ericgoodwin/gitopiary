@@ -18,7 +18,7 @@ A full-screen TUI for managing git worktrees across multiple repositories. The l
 
 - Rust toolchain
 - `gh` CLI (for PR info)
-- `zed` (optional, for the editor shortcut)
+- `$EDITOR` env var (optional, for the editor shortcut)
 
 ## Install
 
