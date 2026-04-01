@@ -21,6 +21,9 @@ pub enum AppEvent {
     WorktreeDeleteError(String),
     RepoAdded(PathBuf),
     RepoAddError(String),
+    /// Open an external editor for the given worktree path.
+    /// Handled in the event loop so the terminal can be suspended/restored.
+    OpenEditor(PathBuf),
     /// Periodic 1-second heartbeat used to update idle indicators.
     Tick,
     Quit,

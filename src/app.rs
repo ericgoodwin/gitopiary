@@ -134,6 +134,15 @@ impl App {
         self.sync_pty_sizes(inner.get());
 
         while let Some(event) = rx.recv().await {
+            // OpenEditor needs direct access to the terminal for suspend/restore,
+            // so handle it here rather than in process_event.
+            if let AppEvent::OpenEditor(path) = event {
+                self.open_editor(terminal, &path)?;
+                terminal.draw(|f| { inner.set(draw(f, self)); })?;
+                self.sync_pty_sizes(inner.get());
+                continue;
+            }
+
             let needs_redraw = self.process_event(event, &tx);
             if self.state.should_quit {
                 break;
@@ -156,6 +165,40 @@ impl App {
         }
         self.last_synced_inner = inner;
         self.pty_manager.resize_all(rows, cols);
+    }
+
+    /// Suspend the TUI, launch `$EDITOR`, then restore the terminal so
+    /// navigation keys work immediately without requiring a refocus.
+    fn open_editor(
+        &self,
+        terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+        path: &std::path::Path,
+    ) -> Result<()> {
+        let editor = match std::env::var("EDITOR") {
+            Ok(e) => e,
+            Err(_) => return Ok(()),
+        };
+
+        // Leave TUI state so the editor gets a clean terminal.
+        restore_terminal(terminal)?;
+
+        // Spawn and wait — works for both TUI editors (vim) and GUI editors
+        // (zed/code, which return immediately).
+        let _ = std::process::Command::new(&editor)
+            .arg(path)
+            .status();
+
+        // Re-enter TUI state.
+        enable_raw_mode()?;
+        execute!(
+            terminal.backend_mut(),
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            EnableBracketedPaste
+        )?;
+        terminal.clear()?;
+
+        Ok(())
     }
 
     fn process_event(&mut self, event: AppEvent, tx: &UnboundedSender<AppEvent>) -> bool {
@@ -293,6 +336,10 @@ impl App {
             AppEvent::Tick => {
                 // Redraw to update idle indicators, but only when sessions exist.
                 self.pty_manager.has_any_sessions()
+            }
+            AppEvent::OpenEditor(_) => {
+                // Handled directly in event_loop; should never reach here.
+                false
             }
             AppEvent::Quit => {
                 self.state.should_quit = true;
