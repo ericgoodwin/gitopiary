@@ -8,6 +8,7 @@ use crossterm::{
 use futures::StreamExt;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::task::JoinHandle;
 use crate::config::{Config, RepoConfig, save_config};
 use crate::events::{handler::handle_event, AppEvent};
 use crate::pty::manager::PtyManager;
@@ -78,23 +79,7 @@ impl App {
         let mut terminal = setup_terminal()?;
 
         // Spawn crossterm event reader
-        let tx_crossterm = tx.clone();
-        tokio::spawn(async move {
-            let mut events = EventStream::new();
-            while let Some(event) = events.next().await {
-                match event {
-                    Ok(e) => {
-                        if tx_crossterm.send(AppEvent::Crossterm(e)).is_err() {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Crossterm event error: {}", e);
-                        break;
-                    }
-                }
-            }
-        });
+        let crossterm_handle = spawn_crossterm_reader(tx.clone());
 
         // Spawn 1-second tick for idle indicators in the worktree panel.
         let tx_tick = tx.clone();
@@ -116,7 +101,7 @@ impl App {
         // Initial refresh
         self.trigger_refresh(tx.clone());
 
-        let result = self.event_loop(&mut terminal, rx, tx).await;
+        let result = self.event_loop(&mut terminal, rx, tx, crossterm_handle).await;
 
         restore_terminal(&mut terminal)?;
         result
@@ -127,6 +112,7 @@ impl App {
         terminal: &mut Terminal<CrosstermBackend<Stdout>>,
         mut rx: UnboundedReceiver<AppEvent>,
         tx: UnboundedSender<AppEvent>,
+        mut crossterm_handle: JoinHandle<()>,
     ) -> Result<()> {
         // Initial draw — capture exact inner size and sync PTYs immediately.
         let inner = std::cell::Cell::new((0u16, 0u16));
@@ -137,7 +123,15 @@ impl App {
             // OpenEditor needs direct access to the terminal for suspend/restore,
             // so handle it here rather than in process_event.
             if let AppEvent::OpenEditor(path) = event {
+                // Stop the crossterm reader so it doesn't compete for stdin
+                // with TUI editors like vim.
+                crossterm_handle.abort();
+
                 self.open_editor(terminal, &path)?;
+
+                // Restart the crossterm reader now that the editor has exited.
+                crossterm_handle = spawn_crossterm_reader(tx.clone());
+
                 terminal.draw(|f| { inner.set(draw(f, self)); })?;
                 self.sync_pty_sizes(inner.get());
                 continue;
@@ -347,6 +341,25 @@ impl App {
             }
         }
     }
+}
+
+fn spawn_crossterm_reader(tx: UnboundedSender<AppEvent>) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut events = EventStream::new();
+        while let Some(event) = events.next().await {
+            match event {
+                Ok(e) => {
+                    if tx.send(AppEvent::Crossterm(e)).is_err() {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Crossterm event error: {}", e);
+                    break;
+                }
+            }
+        }
+    })
 }
 
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
