@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use anyhow::{Context, Result};
@@ -12,6 +13,9 @@ pub struct Config {
 
     #[serde(default)]
     pub repos: Vec<RepoConfig>,
+
+    #[serde(default)]
+    pub keybindings: HashMap<String, String>,
 }
 
 fn default_refresh_interval() -> u64 {
@@ -28,6 +32,7 @@ impl Default for Config {
             refresh_interval_secs: default_refresh_interval(),
             shell: default_shell(),
             repos: vec![],
+            keybindings: HashMap::new(),
         }
     }
 }

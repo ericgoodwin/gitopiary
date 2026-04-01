@@ -13,6 +13,7 @@ use ratatui::{
     Frame,
 };
 use crate::app::App;
+use crate::keybindings::Action;
 use crate::state::types::PanelFocus;
 use crate::ui::add_repo::render_add_repo_dialog;
 use crate::ui::new_worktree::render_new_worktree_dialog;
@@ -45,6 +46,7 @@ pub fn draw(frame: &mut Frame, app: &App) -> (u16, u16) {
         right,
         active_session,
         app.state.focus == PanelFocus::Terminal,
+        &app.state.keybindings,
     );
 
     render_status_bar(frame, status_area, app);
@@ -64,20 +66,45 @@ pub fn draw(frame: &mut Frame, app: &App) -> (u16, u16) {
     (terminal_inner.width, terminal_inner.height)
 }
 
+fn build_status_hints(kb: &crate::keybindings::Keybindings) -> Vec<String> {
+    let mut hints = Vec::new();
+
+    if let (Some(down), Some(up)) = (kb.hint_for(Action::MoveDown), kb.hint_for(Action::MoveUp)) {
+        hints.push(format!("{}/{}: navigate", down, up));
+    }
+
+    let action_labels = [
+        (Action::FocusTerminal, "terminal"),
+        (Action::UnfocusTerminal, "unfocus"),
+        (Action::OpenEditor, "zed"),
+        (Action::NewWorktree, "new"),
+        (Action::DeleteWorktree, "delete"),
+        (Action::AddRepo, "add repo"),
+        (Action::Refresh, "refresh"),
+        (Action::Quit, "quit"),
+    ];
+
+    for (action, label) in &action_labels {
+        if let Some(key) = kb.hint_for(*action) {
+            hints.push(format!("{}: {}", key, label));
+        }
+    }
+
+    hints
+}
+
 fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     let mut parts = vec![];
 
     if app.state.is_refreshing {
         parts.push(Span::styled(
-            " ⟳ refreshing ",
+            " \u{27f3} refreshing ",
             Style::default().fg(Color::Yellow),
         ));
     }
 
-    parts.push(Span::styled(
-        " j/k: navigate  Enter/Space: terminal  Ctrl+Space: unfocus  e: zed  n: new  d: delete  A: add repo  r: refresh  q: quit",
-        Style::default().fg(Color::DarkGray),
-    ));
+    let hint_str = format!(" {}", build_status_hints(&app.state.keybindings).join("  "));
+    parts.push(Span::styled(hint_str, Style::default().fg(Color::DarkGray)));
 
     let status = Paragraph::new(Line::from(parts))
         .block(Block::default().style(Style::default().bg(theme::COLOR_STATUS_BAR)));

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use crate::config::RepoConfig;
+use crate::keybindings::Keybindings;
 
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -12,10 +13,11 @@ pub struct AppState {
     pub is_refreshing: bool,
     pub should_quit: bool,
     pub delete_worktree_dialog: Option<DeleteWorktreeDialog>,
+    pub keybindings: Keybindings,
 }
 
 impl AppState {
-    pub fn new(repos: Vec<Repository>) -> Self {
+    pub fn new(repos: Vec<Repository>, keybindings: Keybindings) -> Self {
         Self {
             repos,
             selected_repo_idx: 0,
@@ -26,6 +28,7 @@ impl AppState {
             is_refreshing: false,
             should_quit: false,
             delete_worktree_dialog: None,
+            keybindings,
         }
     }
 

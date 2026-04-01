@@ -6,6 +6,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, Mous
 use tokio::sync::mpsc::UnboundedSender;
 use crate::app::App;
 use crate::events::AppEvent;
+use crate::keybindings::Action;
 use crate::state::types::{AddRepoDialog, DeleteWorktreeDialog, PanelFocus, NewWorktreeDialog};
 
 pub fn handle_event(app: &mut App, event: Event, tx: &UnboundedSender<AppEvent>) {
@@ -212,6 +213,7 @@ fn clear_selection_for_path(app: &mut App, path: &std::path::PathBuf) {
 }
 
 fn handle_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>) {
+    tracing::debug!("handle_key: code={:?} modifiers={:?} kind={:?} focus={:?}", key.code, key.modifiers, key.kind, app.state.focus);
     if app.state.delete_worktree_dialog.is_some() {
         handle_delete_dialog_key(app, key, tx);
         return;
@@ -448,20 +450,23 @@ fn handle_dialog_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent
 }
 
 fn handle_list_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>) {
-    match (key.code, key.modifiers) {
-        (KeyCode::Char('q'), _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+    tracing::debug!("list key: code={:?} modifiers={:?} kind={:?}", key.code, key.modifiers, key.kind);
+    let action = match app.state.keybindings.get(key.code, key.modifiers) {
+        Some(a) => *a,
+        None => return,
+    };
+
+    match action {
+        Action::Quit => {
             app.state.should_quit = true;
         }
-        (KeyCode::Char('j'), _) | (KeyCode::Down, _) => {
+        Action::MoveDown => {
             app.state.move_selection_down();
         }
-        (KeyCode::Char('k'), _) | (KeyCode::Up, _) => {
+        Action::MoveUp => {
             app.state.move_selection_up();
         }
-        (KeyCode::Tab, _) => {
-            app.state.move_selection_down();
-        }
-        (KeyCode::Enter, _) | (KeyCode::Char(' '), _) => {
+        Action::FocusTerminal => {
             if let Some(path) = app.state.selected_worktree_path().cloned() {
                 let (rows, cols) = exact_or_approx_pty_size(app);
                 if let Err(e) = app.pty_manager.get_or_create(&path, rows, cols, tx.clone()) {
@@ -471,16 +476,16 @@ fn handle_list_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>)
                 }
             }
         }
-        (KeyCode::Char('n'), _) => {
+        Action::NewWorktree => {
             let repo_idx = app.state.selected_repo_idx;
             if !app.state.repos.is_empty() {
                 app.state.new_worktree_dialog = Some(NewWorktreeDialog::new(repo_idx));
             }
         }
-        (KeyCode::Char('a'), KeyModifiers::SHIFT) | (KeyCode::Char('A'), _) => {
+        Action::AddRepo => {
             app.state.add_repo_dialog = Some(AddRepoDialog::new());
         }
-        (KeyCode::Char('e'), _) => {
+        Action::OpenEditor => {
             if let Some(wt) = app.state.selected_worktree() {
                 let path = wt.path.clone();
                 std::process::Command::new("zed")
@@ -489,10 +494,10 @@ fn handle_list_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>)
                     .ok();
             }
         }
-        (KeyCode::Char('r'), _) => {
+        Action::Refresh => {
             app.trigger_refresh(tx.clone());
         }
-        (KeyCode::Char('d'), _) => {
+        Action::DeleteWorktree => {
             if let Some(repo) = app.state.repos.get(app.state.selected_repo_idx) {
                 if let Some(wt) = repo.worktrees.get(app.state.selected_worktree_idx) {
                     if wt.is_main {
@@ -510,7 +515,9 @@ fn handle_list_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEvent>)
                 }
             }
         }
-        _ => {}
+        Action::UnfocusTerminal => {
+            // UnfocusTerminal in the list context is a no-op (already unfocused)
+        }
     }
 }
 
@@ -519,9 +526,7 @@ fn handle_terminal_key(app: &mut App, key: KeyEvent, tx: &UnboundedSender<AppEve
 
     tracing::debug!("terminal key: code={:?} modifiers={:?}", key.code, key.modifiers);
 
-    let is_unfocus = key.code == KeyCode::Char(' ')
-        && key.modifiers.contains(KeyModifiers::CONTROL);
-    if is_unfocus {
+    if app.state.keybindings.get(key.code, key.modifiers) == Some(&Action::UnfocusTerminal) {
         app.state.focus = PanelFocus::WorktreeList;
         return;
     }
